@@ -24,15 +24,15 @@ struct StateMachine {
   uint8_t nBit;
   uint32_t val;
 };
-u
+
 struct Remote {
   uint8_t protocol;
   uint32_t code;
 };
 
 const Protocol proto[] = {
-  { 350, { 1, 31 }, { 1, 3 }, { 3, 1 }, true, 24 },
-  { 270, { 36, 1 }, { 1, 2 }, { 2, 1 }, false, 12 }
+  { 350, { 1, 31 }, { 1, 3 }, { 3, 1 }, true, 24 }, //original remote
+  { 270, { 36, 1 }, { 1, 2 }, { 2, 1 }, false, 12 } //HT12E
 };
 
 StateMachine sm[sizeof proto / sizeof(*proto)];
@@ -135,20 +135,28 @@ void saveRemote(uint8_t protocol, uint32_t code, uint8_t melody) {
 #endif
 }
 
+void startLearning() {
+  learning = true;
+  tStartLearning = millis();
+  play(0xFF);  //Stop playing?
+  play(0x42);  //Beep
+}
+
+void stopLearning() {
+  learning = false;
+  tStartLearning = 0;
+  play(0x43);  //Beep beep
+}
+
 void loop() {
-  btnVol = (5 + btnVol * 9 + (digitalReadFast(PIN_VOL) ? 0 : 10)) / 10;
-  btnMelody = (5 + btnMelody * 9 + (digitalReadFast(PIN_MELODY) ? 0 : 10)) / 10;
+#ifndef DEBUG
+  if (tStartLearning != 0 && millis() - tStartLearning > 8000) 
+    stopLearning();
 
-  // delay(50);
-  // Serial.print((char)('0' + btnVol));
+  btnVol = (btnVol * 9 + (digitalReadFast(PIN_VOL) ? 0 : 100)) / 10;
+  btnMelody = (btnMelody * 9 + (digitalReadFast(PIN_MELODY) ? 0 : 100)) / 10;
 
-  if (tStartLearning != 0 && millis() - tStartLearning > 8000) {
-    learning = false;
-    tStartLearning = 0;
-    play(0x43);  //Beep beep
-  }
-
-  if (btnVol > 5) {
+  if (btnVol > 50) {
 #ifdef DEBUG
     Serial.printf("VOL\n");
 #endif
@@ -160,8 +168,10 @@ void loop() {
     btnVol = 0;
     while (!digitalReadFast(PIN_VOL))
       ;
+    delay(20);
   }
-  if (btnMelody > 5) {
+
+  if (btnMelody > 50) {
 #ifdef DEBUG
     Serial.printf("MEL\n");
 #endif
@@ -172,10 +182,7 @@ void loop() {
 #ifdef DEBUG
         Serial.printf("LONG\n");
 #endif
-        learning = true;
-        tStartLearning = millis();
-        play(0xFF);  //Stop playing?
-        play(0x42);  //Beep
+        startLearning();
         break;
       }
     if (!learning) {
@@ -186,10 +193,12 @@ void loop() {
     }
     while (!digitalReadFast(PIN_MELODY))
       ;
+    delay(20);
   }
-#ifndef DEBUG
+
   if (!pulseAvailable)
     return;
+#endif
 
   pulseAvailable = false;
   tEndPulse = _tEndPulse;
@@ -214,18 +223,16 @@ void loop() {
 
       if (pStateMachine->nBit == p->nBits) {
 #ifdef DEBUG
-        // Serial.printf("ricevuto codice=%lX protocollo=%d\n", pStateMachine->val, i);
+        Serial.printf("ricevuto codice=%lX protocollo=%d\n", pStateMachine->val, i);
 #endif
         int n = findRemoteAddress(i, pStateMachine->val);
         if (learning) {
-          learning = false;
-          tStartLearning = 0;
+          stopLearning();
           saveRemote(i, pStateMachine->val, currentMelody);
-          play(0x43);  //Beep beep
         } else if (n >= 0 && n < MAX_REMOTES)
           play(EEPROM.read(n * 6 + 5));
 #ifdef DEBUG
-          // Serial.printf("\tremote=%d\n", n);
+          Serial.printf("\tremote=%d\n", n);
 #endif
         pStateMachine->val = pStateMachine->nBit = 0;
         pStateMachine->sync = false;
@@ -239,5 +246,4 @@ void loop() {
   }
   tPrevStartPulse = tStartPulse;
   tStartPulse = tEndPulse;
-#endif
 }
