@@ -73,15 +73,11 @@ void setup() {
   PORTA.PIN1CTRL |= PORT_ISC_BOTHEDGES_gc;
 
 #ifndef DEBUG
+  while (!digitalReadFast(PIN_MELODY));
+  while (!digitalReadFast(PIN_VOL));
+  delay(1000);
   play(0);
 #endif
-
-  // for (int i=0;i<12;i++)
-  //   EEPROM.write(i,0xFF);////////////////
-
-  /////////////
-  // for (unsigned i=0;i<sizeof remotes/sizeof(*remotes);i++)
-  //   saveRemote(remotes[i].protocol, remotes[i].code, i);
 }
 
 //send a command to the SX073A melody generator
@@ -162,13 +158,21 @@ void loop() {
 #endif
     currentVolume--;
     if (currentVolume == 0xFF) currentVolume = 3;
-    const static uint8_t volumes[] = { 15, 9, 4, 0x20 };
-    play(0xE | volumes[currentVolume]);
+    const static uint8_t volumes[] = { 0x10,4,9,15 };
+    play(0xE0 | volumes[currentVolume]);
     play(currentMelody);
     btnVol = 0;
+    uint64_t t = millis();
+    while (!digitalReadFast(PIN_VOL))
+      if (millis() - t > 10000) {
+        play(0x43);
+        for (int i=0;i<12;i++)  //Erase EEPROM
+          EEPROM.write(i,0xFF);
+        break;
+      }
     while (!digitalReadFast(PIN_VOL))
       ;
-    delay(20);
+    delay(200);
   }
 
   if (btnMelody > 50) {
@@ -193,7 +197,7 @@ void loop() {
     }
     while (!digitalReadFast(PIN_MELODY))
       ;
-    delay(20);
+    delay(200);
   }
 
   if (!pulseAvailable)
@@ -229,8 +233,10 @@ void loop() {
         if (learning) {
           stopLearning();
           saveRemote(i, pStateMachine->val, currentMelody);
-        } else if (n >= 0 && n < MAX_REMOTES)
+        } else if (n >= 0 && n < MAX_REMOTES) {
           play(EEPROM.read(n * 6 + 5));
+        }
+        delay(2000);
 #ifdef DEBUG
           Serial.printf("\tremote=%d\n", n);
 #endif
