@@ -7,6 +7,9 @@
 #define PIN_MELODY PIN_PA0
 #define PIN_RADIO PIN_PA1
 #define PI_SX073A PIN_PA3
+#define BEEP 0x42
+#define BEEP_BEEP 0x43
+#define STOP_PLAY 0xFF  //?
 
 struct HighLow {
   uint8_t high, low;
@@ -30,9 +33,10 @@ struct Remote {
   uint32_t code;
 };
 
+//The "real" for pulse duration values have been fine tuned on actual receive performance
 const Protocol proto[] = {
-  { 350, { 1, 31 }, { 1, 3 }, { 3, 1 }, true, 24 }, //original remote
-  { 270, { 36, 1 }, { 1, 2 }, { 2, 1 }, false, 12 } //HT12E
+  { 400/*350*/, { 1, 31 }, { 1, 3 }, { 3, 1 }, true, 24 }, //original remote
+  { 300/*270*/, { 36, 1 }, { 1, 2 }, { 2, 1 }, false, 12 } //HT12E
 };
 
 StateMachine sm[sizeof proto / sizeof(*proto)];
@@ -76,7 +80,7 @@ void setup() {
   while (!digitalReadFast(PIN_MELODY));
   while (!digitalReadFast(PIN_VOL));
   delay(1000);
-  play(0);
+  play(BEEP_BEEP);
 #endif
 }
 
@@ -134,14 +138,14 @@ void saveRemote(uint8_t protocol, uint32_t code, uint8_t melody) {
 void startLearning() {
   learning = true;
   tStartLearning = millis();
-  play(0xFF);  //Stop playing?
-  play(0x42);  //Beep
+  play(STOP_PLAY);
+  play(BEEP);
 }
 
 void stopLearning() {
   learning = false;
   tStartLearning = 0;
-  play(0x43);  //Beep beep
+  play(BEEP_BEEP);
 }
 
 void loop() {
@@ -165,7 +169,7 @@ void loop() {
     uint64_t t = millis();
     while (!digitalReadFast(PIN_VOL))
       if (millis() - t > 10000) {
-        play(0x43);
+        play(BEEP_BEEP);
         for (int i=0;i<12;i++)  //Erase EEPROM
           EEPROM.write(i,0xFF);
         break;
@@ -227,7 +231,7 @@ void loop() {
 
       if (pStateMachine->nBit == p->nBits) {
 #ifdef DEBUG
-        Serial.printf("ricevuto codice=%lX protocollo=%d\n", pStateMachine->val, i);
+        Serial.printf("received code=%lX protocol=%d\n", pStateMachine->val, i);
 #endif
         int n = findRemoteAddress(i, pStateMachine->val);
         if (learning) {
